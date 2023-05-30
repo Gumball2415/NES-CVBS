@@ -94,8 +94,9 @@ private:
     const int ThreadCount = 1;
     uint16_t* PPURawFrameBuffer = nullptr;
 
-    void ConstructField(bool odd_field);
-    void EncodeField(int ppu_phase, int line_start, int line_end);
+    void InitializeField();
+    void EmplaceField();
+    void EncodeField(int ppu_phase, int line_start, int line_end, bool odd_field);
     void EncodeFullField(int ppu_phase, int line_start, int line_end);
     void DecodeField(uint32_t* rgb_buffer, int ppu_phase, int line_start, int line_end);
     void DecodeFullField(int& ppu_phase);

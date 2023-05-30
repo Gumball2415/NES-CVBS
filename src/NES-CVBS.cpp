@@ -30,8 +30,8 @@ void NES_CVBS::FilterFrame(uint16_t* ppu_buffer, uint32_t* rgb_buffer, int ppu_p
     bool odd_field = false;
     // TODO: multithreading
     {
-        ConstructField(odd_field);
-        EncodeField(ppu_phase, 0, 240);
+        //EmplaceField();
+        //EncodeField(ppu_phase, 0, 240, odd_field);
         //DecodeField(rgb_buffer, ppu_phase, 0, 240);
     }
 }
@@ -62,6 +62,8 @@ NES_CVBS::NES_CVBS(FilterSettings filter_settings)
     RawFieldBuffer.resize(size_t(FieldBufferWidth * FieldBufferHeight));
     SignalFieldBuffer.resize(size_t(FieldBufferWidth * FieldBufferHeight * PPURasterTimings.samples_per_pixel));
 
+    InitializeField();
+
     for (int emph = 0; emph < 2; emph++) {
         for (int color = 0; color < 0x40; color++) {
             int hue = color & 0x0F;
@@ -89,7 +91,66 @@ NES_CVBS::~NES_CVBS()
 {
 }
 
-void NES_CVBS::ConstructField(bool odd_field)
+void NES_CVBS::InitializeField()
+{
+    auto write_pixels_in = [&](uint16_t length, std::vector<PPUDotType>& raw_field_buffer, uint16_t& pixel_index, uint16_t& scanline_index, uint16_t& pixel_threshold, PPUDotType pixel) {
+        pixel_threshold += length;
+        while (pixel_index < pixel_threshold) {
+            raw_field_buffer[size_t((scanline_index * FieldBufferWidth) + pixel_index)] = pixel;
+            pixel_index++;
+        }
+    };
+
+    auto scanline_is_in = [&](uint16_t length, uint16_t& scanline, uint16_t& scanline_threshold, bool reset = false) {
+        scanline_threshold += length;
+        bool result = scanline < scanline_threshold;
+        if (reset) scanline_threshold = 0;
+        return result;
+    };
+
+    for (uint16_t scanline = 0; scanline < FieldBufferHeight; scanline++) {
+        uint16_t pixel = 0;
+        uint16_t pixel_threshold = 0;
+        uint16_t scanline_threshold = 0;
+
+        // horizontal sync, back porch, and colorburst
+        if (Settings.sync_enable) {
+            write_pixels_in(PPURasterTimings.horizontal_sync, RawFieldBuffer, pixel, scanline, pixel_threshold, sync_level);
+            write_pixels_in(PPURasterTimings.back_porch_first, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level);
+            write_pixels_in(PPURasterTimings.colorburst, RawFieldBuffer, pixel, scanline, pixel_threshold, colorburst);
+            write_pixels_in(PPURasterTimings.back_porch_second, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level);
+        }
+
+        if (scanline_is_in(PPURasterTimings.active_scanlines, scanline, scanline_threshold)) {
+            write_pixels_in(PPURasterTimings.gray_pulse, RawFieldBuffer, pixel, scanline, pixel_threshold, PPUDotType((0x25) & 0x30));
+            write_pixels_in(PPURasterTimings.border_left, RawFieldBuffer, pixel, scanline, pixel_threshold, PPUDotType(0x10));
+            write_pixels_in(PPURasterTimings.active_pixels, RawFieldBuffer, pixel, scanline, pixel_threshold, PPUDotType(0x25));
+            write_pixels_in(PPURasterTimings.border_right, RawFieldBuffer, pixel, scanline, pixel_threshold, PPUDotType(0x10));
+        }
+        else if (scanline_is_in(PPURasterTimings.postrender_scanlines, scanline, scanline_threshold)) {
+            write_pixels_in(PPURasterTimings.gray_pulse, RawFieldBuffer, pixel, scanline, pixel_threshold, PPUDotType((0x25) & 0x30));
+            write_pixels_in(PPURasterTimings.border_bottom, RawFieldBuffer, pixel, scanline, pixel_threshold, PPUDotType(0x10));
+        }
+        else if (Settings.sync_enable && scanline_is_in(PPURasterTimings.postrender_blank_scanlines, scanline, scanline_threshold))
+            write_pixels_in(PPURasterTimings.vblank, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level);
+        else if (Settings.sync_enable && scanline_is_in(PPURasterTimings.vertical_sync_scanlines, scanline, scanline_threshold)) {
+            // it's rewind time! overwrite hsync, back porch and colorburst with vblank pulse
+            pixel = 0;
+            pixel_threshold = 0;
+            write_pixels_in(PPURasterTimings.blank_pulse, RawFieldBuffer, pixel, scanline, pixel_threshold, sync_level);
+            write_pixels_in(PPURasterTimings.sync_seperator, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level);
+        }
+        else if (Settings.sync_enable && scanline_is_in(PPURasterTimings.prerender_blanking_scanlines, scanline, scanline_threshold)) {
+            write_pixels_in(PPURasterTimings.vblank, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level);
+        }
+
+        // front porch is the only constant in life
+        if (Settings.sync_enable)
+            write_pixels_in(PPURasterTimings.front_porch, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level);
+    }
+}
+
+void NES_CVBS::EmplaceField()
 {
     auto write_pixels_in = [&](uint16_t length, std::vector<PPUDotType>& raw_field_buffer, uint16_t& pixel_index, uint16_t& scanline_index, uint16_t& pixel_threshold, PPUDotType pixel) {
         pixel_threshold += length;
@@ -110,23 +171,22 @@ void NES_CVBS::ConstructField(bool odd_field)
         uint16_t scanline_threshold = 0;
 
         if (Settings.sync_enable &&
-        (!scanline_is_in(PPURasterTimings.vertical_sync_scanlines, scanline, scanline_threshold) ||
-        scanline_is_in(PPURasterTimings.prerender_blanking_scanlines, scanline, scanline_threshold))) {
+            (!scanline_is_in(PPURasterTimings.vertical_sync_scanlines, scanline, scanline_threshold) ||
+                scanline_is_in(PPURasterTimings.prerender_blanking_scanlines, scanline, scanline_threshold))) {
+            scanline_threshold = 0;
             write_pixels_in(PPURasterTimings.horizontal_sync, RawFieldBuffer, pixel, scanline, pixel_threshold, sync_level);
             write_pixels_in(PPURasterTimings.back_porch_first, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level);
             write_pixels_in(PPURasterTimings.colorburst, RawFieldBuffer, pixel, scanline, pixel_threshold, colorburst);
             write_pixels_in(PPURasterTimings.back_porch_second, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level);
         }
+        else scanline_threshold = 0;
 
         if (scanline_is_in(PPURasterTimings.active_scanlines, scanline, scanline_threshold)) {
             // TODO: proper gray pulse emulation
             write_pixels_in(PPURasterTimings.gray_pulse, RawFieldBuffer, pixel, scanline, pixel_threshold, (blank_level));
             // TODO: border color emulation
             // Skip one dot in odd fields
-            if (odd_field) {
-                write_pixels_in(PPURasterTimings.border_left - 1, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level);
-            }
-            else write_pixels_in(PPURasterTimings.border_left, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level);
+            write_pixels_in(PPURasterTimings.border_left, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level);
             write_pixels_in(PPURasterTimings.active_pixels, RawFieldBuffer, pixel, scanline, pixel_threshold, PPUDotType(*PPURawFrameBuffer++));
             write_pixels_in(PPURasterTimings.border_right, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level);
         }
@@ -147,7 +207,7 @@ void NES_CVBS::ConstructField(bool odd_field)
     }
 }
 
-void NES_CVBS::EncodeField(int ppu_phase, int line_start, int line_end)
+void NES_CVBS::EncodeField(int ppu_phase, int line_start, int line_end, bool odd_field)
 {
     //for (PPUDotType i : RawFieldBuffer)
     //    std::cout << i << ' ';
