@@ -21,37 +21,4 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-// NES composite output voltages, in volt units
-struct CompositeOutputLevel{
-    double sync[2];				// sync / blank
-    double colorburst[2];		// hi / lo
-    double signal[4][2][2];		// $0x-$3x, $x0/$xD, no emphasis/emphasis
-};
-
-// https://forums.nesdev.org/viewtopic.php?p=159266#p159266
-const CompositeOutputLevel NES_2C02 = CompositeOutputLevel(
-    { 0.048, 0.312 },
-    { 0.524, 0.148 },
-    {
-        {
-            { 0.616, 0.500 },
-            { 0.228, 0.192 }
-        },
-        {
-            { 0.840, 0.676 },
-            { 0.312, 0.256 }
-        },
-        {
-            { 1.100, 0.896 },
-            { 0.552, 0.448 }
-        },
-        {
-            { 1.100, 0.896 },
-            { 0.880, 0.712 }
-        }
-    }
-);
-
-// TODO: find voltage measurements for these PPUs
-const CompositeOutputLevel NES_2C07 = NES_2C02;
-const CompositeOutputLevel NES_UA6538 = NES_2C02;
+#include <cstdint>

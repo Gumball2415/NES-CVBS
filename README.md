@@ -7,6 +7,8 @@ Goals:
 - [ ] Configurable partial emulation of composite for high performance applications
 - [ ] Realtime rendering of composite video into RGB
 - [ ] Adjustable output display gamut output
-- [ ] Easy configurability to accept new PPU composite voltage level data
+* [x] Easy configurability to accept new PPU composite voltage level data
+
+Dependencies: lodepng, SDL2
 
 (C) Persune 2023
