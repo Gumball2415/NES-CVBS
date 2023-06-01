@@ -29,21 +29,12 @@ SOFTWARE.
 
 enum PPUDotType {
     // first 512 entries are exclusively for the 9-bit PPU pixel format: "eeellcccc".
-    sync_level = 512,
-    blank_level,
-    colorburst
+    // these additional entries are bitshifted to avoid collisions
+    sync_level = (1 << 9),
+    blank_level = (2 << 9),
+    colorburst = (3 << 9)
 };
 
-struct FilterSettings {
-    int ppu_type = 0;       // 0 = 2C02, 1 = 2C07, 2 = UA6538
-    int ppu_2C04_rev = 0;   // for generating the LUT to unscramble 2C04 palettes
-    bool sync_enable = false;   // enable sync and colorburst emulation
-    
-    double brightness_delta = 0.0;
-    double contrast_delta = 0.0;
-    double hue_delta = 0.0;
-    double saturation_delta = 0.0;
-};
 const uint8_t PaletteLUT_2C04[5][64] = {
     {},
     {
@@ -76,30 +67,43 @@ class NES_CVBS
 {
 private:
     PPUTimings PPURasterTimings = {};
-    FilterSettings Settings = {};
+
+    // Filter settings
+    int PPUType = 0;                // 0 = 2C02, 1 = 2C07, 2 = UA6538
+    int PPU2C04Rev = 0;             // for generating the LUT to unscramble 2C04 palettes
+    bool PPUSyncEnable = false;     // enable sync and colorburst emulation
+    bool PPUFullFrameInput = false; // input buffer includes the entire 283x242 "visible portion". only available in NTSC
+    int PPUThreadCount = 0;         // enables multithreading when thread count > 1.
+
+    // image settings
+    double brightness_delta = 0.0;
+    double contrast_delta = 0.0;
+    double hue_delta = 0.0;
+    double saturation_delta = 0.0;
 
     // voltage LUT for any given color, in mV
     // high/low, no emphasis/emphasis, $xy color
-    uint16_t ColorLevelLUT[2][2][64] = {};
-
-    // sync levels
-    uint16_t SyncLevelLUT[2] = {};
-
-    // colorburst levels
-    uint16_t ColorburstLevelLUT[2] = {};
+    // 0x40 == sync, 0x41 = colorburst
+    uint16_t SignalLevelLUT[2][2][66] = {};
     
     // 2C04 unscrambling LUT
     const uint8_t* PPU2C04LUT = nullptr;
 
-    const int ThreadCount = 1;
+    // input PPU frame buffer, can be 256x240 or 283x242
     uint16_t* PPURawFrameBuffer = nullptr;
 
+    // Initializes the raw field buffer
     void InitializeField();
+
+    // places the input PPU buffer into the raw field
     void EmplaceField();
-    void EncodeField(int ppu_phase, int line_start, int line_end, bool odd_field);
-    void EncodeFullField(int ppu_phase, int line_start, int line_end);
-    void DecodeField(uint32_t* rgb_buffer, int ppu_phase, int line_start, int line_end);
-    void DecodeFullField(int& ppu_phase);
+
+    // helper functions for the two functions above
+    void WritePixelsIn(uint16_t length, std::vector<PPUDotType>& raw_field_buffer, uint16_t& pixel_index, uint16_t& scanline_index, uint16_t& pixel_threshold, PPUDotType pixel, uint16_t** ppu_buffer = nullptr);
+    bool ScanlineIsIn(uint16_t length, uint16_t& scanline, uint16_t& scanline_threshold);
+
+    void EncodeField(int dot_phase, int line_start, int line_end, bool skip_dot);
+    void DecodeField(uint32_t* rgb_buffer, int dot_phase, int line_start, int line_end, bool skip_dot);
 
 public:
     uint16_t FieldBufferWidth = 0;
@@ -109,8 +113,10 @@ public:
 
     // a single composite field is stored here for color decoding
     std::vector<uint16_t> SignalFieldBuffer = {};
-    void FilterFrame(uint16_t* ppu_buffer, uint32_t* rgb_buffer, int ppu_phase);
+    void FilterFrame(uint16_t* ppu_buffer, uint32_t* rgb_buffer, int dot_phase, bool skip_dot);
 
-    NES_CVBS(FilterSettings filter_settings);
+    void ApplySettings(double brightness_delta, double contrast_delta, double hue_delta, double saturation_delta);
+
+    NES_CVBS(int ppu_type, int ppu_2c04_rev, bool ppu_sync_enable, bool ppu_full_frame_input, int ppu_thread_count);
     ~NES_CVBS();
 };

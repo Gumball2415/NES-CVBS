@@ -66,6 +66,7 @@ struct PPUTimings {
     bool dot_skip;
 
     uint16_t samples_per_pixel;
+    uint8_t colorburst_phase;
 };
 
 const PPUTimings PPU2C02Timings = {
@@ -90,7 +91,8 @@ const PPUTimings PPU2C02Timings = {
     14,
 
     true,
-    8
+    uint16_t((21477272 * 2) / (21477272 / 4)),  // color generator clock / PPU clock
+    0x08
 };
 
 const PPUTimings PPU2C07Timings = {
@@ -100,22 +102,24 @@ const PPUTimings PPU2C07Timings = {
     25, 4, 15, 5, 9,
 
     // visible scanlines (0-239)
-    240, 1, 15, 256, 11,
+    240, 0, 18, 256, 9,
 
-    // postrender scanlines (240-241)
-    2, 282,
+    // postrender scanlines (not present)
+    0, 283,
 
-    // postrender blanking scanlines (242-244)
-    3, 283,
+    // postrender blanking scanlines (240-269)
+    30, 283,
 
     // vertical sync scanlines (245-247)
-    3, 318, 14,
+    3, 320, 12,
 
     // prerender blanking scanlines (248-261)
-    14,
+    39,
 
-    true,
-    10
+    false,
+    uint16_t((26601712 * 2) / (26601712 / 5)),    // color generator clock / PPU clock
+    0x07
 };
 
+// Dendy timings seem to have the same timings as the 2C07
 const PPUTimings PPUUA6538Timings = PPU2C07Timings;

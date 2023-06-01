@@ -17,7 +17,6 @@ project (NES-CVBS-Demo
 
 set(CMAKE_CXX_STANDARD 23)
 
-
 # lodepng
 add_subdirectory ("src/lodepng")
 list (APPEND EXTRA_LIBS "lodepng")

@@ -23,14 +23,14 @@ SOFTWARE.
 
 // NES composite output voltages, in volt units
 struct CompositeOutputLevel{
-    double sync[2];				// sync / blank
+    double sync[2];				// blank / sync
     double colorburst[2];		// hi / lo
     double signal[4][2][2];		// $0x-$3x, $x0/$xD, no emphasis/emphasis
 };
 
 // https://forums.nesdev.org/viewtopic.php?p=159266#p159266
 const CompositeOutputLevel NES_2C02 = CompositeOutputLevel(
-    { 0.048, 0.312 },
+    { 0.312, 0.048 },
     { 0.524, 0.148 },
     {
         {

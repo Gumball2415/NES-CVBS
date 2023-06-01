@@ -24,46 +24,30 @@ SOFTWARE.
 // demo program, takes in an indexed .bmp
 
 #include "main.h"
-#include "src/NES-CVBS.h"
-#include "src/lodepng/lodepng.h"
-#include "SDL.h"
-#include <iostream>
-
-void export_png(const char* filename, std::vector<uint8_t>& image, unsigned width, unsigned height) {
-	std::vector<unsigned char> png;
-	lodepng::State state; //optionally customize this one
-	state.info_raw.bitdepth = 16;
-	state.info_raw.colortype = LCT_GREY;
-	state.info_png.color.bitdepth = 16;
-	state.info_png.color.colortype = LCT_GREY;
-	state.encoder.auto_convert = 0;
-	unsigned error = lodepng::encode(png, image, width, height, state);
-	if (!error) lodepng::save_file(png, filename);
-
-	//if there's an error, display it
-	if (error) std::cout << "encoder error " << error << ": " << lodepng_error_text(error) << std::endl;
-}
 
 int main(int argc, char* argv[])
 {
-	FilterSettings cvbs_settings;
+	NES_CVBS* nes_filter = new NES_CVBS(0, 0, true, false, 4);
 
-	NES_CVBS nes_filter(cvbs_settings);
+	uint16_t* ppu_frame_input = new uint16_t[256 * 240]{};
+	for (int pixel = 0; pixel < (256 * 240); pixel++) ppu_frame_input[pixel] = 0x08;
+	uint32_t* rgb_frame_output = new uint32_t[256 * 240]{};
 
-	uint16_t ppu_frame_input[256 * 240] = {};
-	uint32_t* rgb_frame_output = nullptr;
-
-	nes_filter.FilterFrame(ppu_frame_input, rgb_frame_output, 0);
+	nes_filter->FilterFrame(ppu_frame_input, rgb_frame_output, 0, true);
 
 	std::vector<uint8_t> buffer_stretch;
-	buffer_stretch.resize(size_t(nes_filter.RawFieldBuffer.size() * 2));
 
-	for (int i = 0; i < nes_filter.RawFieldBuffer.size(); i++) {
-		buffer_stretch.at(size_t(i * 2)) = uint8_t((nes_filter.RawFieldBuffer.at(i) >> 8) & 0x00FF);
-		buffer_stretch.at(size_t((i * 2) + 1)) = uint8_t(nes_filter.RawFieldBuffer.at(i) & 0x00FF);
+	for (int i = 0; i < nes_filter->SignalFieldBuffer.size(); i++) {
+		buffer_stretch.push_back(uint8_t((nes_filter->SignalFieldBuffer.at(i) >> 8) & 0x00FF));
+		buffer_stretch.push_back(uint8_t(nes_filter->SignalFieldBuffer.at(i) & 0x00FF));
 	}
 
-	export_png("test.png", buffer_stretch, nes_filter.FieldBufferWidth, nes_filter.FieldBufferHeight);
+	export_png("test.png", buffer_stretch, uint32_t(nes_filter->SignalFieldBuffer.size() / nes_filter->FieldBufferHeight), nes_filter->FieldBufferHeight);
+
+	// done, claygo
+	delete nes_filter;
+	delete[] ppu_frame_input;
+	delete[] rgb_frame_output;
 
 	return 0;
 }
