@@ -100,7 +100,7 @@ NES_CVBS::NES_CVBS(int ppu_type, int ppu_2c04_rev, bool ppu_sync_enable, bool pp
     FieldBufferWidth = PPUSyncEnable ? PPURasterTimings.field_width : PPURasterTimings.visible_width;
     FieldBufferHeight = PPUSyncEnable ? PPURasterTimings.field_height : PPURasterTimings.visible_height;
 
-    RawFieldBuffer.resize(size_t(FieldBufferWidth * FieldBufferHeight));
+    RawFieldBuffer.resize(size_t(FieldBufferWidth * FieldBufferHeight + 1));
     SignalFieldBuffer.resize(size_t((FieldBufferWidth * PPURasterTimings.samples_per_pixel) * FieldBufferHeight));
 
     InitializeField();
@@ -248,12 +248,8 @@ bool NES_CVBS::ScanlineIsIn(uint16_t length, uint16_t& scanline, uint16_t& scanl
     return scanline < scanline_threshold;
 }
 
-void NES_CVBS::EncodeField(int dot_phase, int line_start, int line_end, bool odd_field)
+void NES_CVBS::EncodeField(int dot_phase, int line_start, int line_end, bool skip_dot)
 {
-    //RawFieldBuffer
-    //SignalFieldBuffer
-
-
     // TODO: find a more efficient method to determine color wave phase
     static auto in_phase = [&](uint16_t phase, uint8_t hue) {
         return (hue + phase) % 12 < 6;
@@ -264,24 +260,45 @@ void NES_CVBS::EncodeField(int dot_phase, int line_start, int line_end, bool odd
             (emphasis & 0b010) && in_phase(phase, 0x4) ||
             (emphasis & 0b100) && in_phase(phase, 0x8);
     };
+
+    // skip a dot on odd rendered frames.
+    // we can't really alter the size of the signal buffer, so instead we'll shift the phase by -1 pixel
+    // we'll skip over this pixel in the decoder
+    bool dot_jump = skip_dot && (PPUType == 0);
+
+    // determine polarity of waveform
     bool wave_toggle = false, emphasis_toggle = false;
+
+    // color generator phase
     uint16_t phase = ((dot_phase + line_start) % 3) * 4;
+
+    // if we skipped a dot already, shift phase accordingly
+    if (dot_jump && line_start > 0)
+        phase = (phase + 12 - PPURasterTimings.samples_per_pixel);
+
     for (int scanline = line_start; scanline < line_end; scanline++) {
+        // on PAL, alternate phase on every other scanline
         bool phase_alternate = ((scanline) & 0b1) && (PPUType >= 1);
         if (phase_alternate) phase = (phase + 3) % 12;
-        // on PAL, alternate phase on every other scanline
+
         for (int pixel_index = 0; pixel_index < FieldBufferWidth; pixel_index++) {
+            // skip a dot just before cycle 0, if enabled
+            if (pixel_index == 63 && scanline == 0 && dot_jump)
+                phase = (phase + 12 - PPURasterTimings.samples_per_pixel) % 12;
             PPUDotType pixel = RawFieldBuffer[size_t((scanline * FieldBufferWidth) + pixel_index)];
             uint8_t color = pixel & 0x3F;
             uint8_t hue = pixel & 0x0F;
             uint8_t emphasis = (pixel >> 6) & 7;
+
             if (pixel == sync_level || pixel == blank_level) {
+                hue = PPURasterTimings.colorburst_phase;
                 color = 0x40;
             }
             else if (pixel == colorburst){
                 hue = PPURasterTimings.colorburst_phase;
                 color = 0x41;
             }
+
             int signal_index = 0;
             while (signal_index < PPURasterTimings.samples_per_pixel) {
                 wave_toggle = in_phase(phase, hue);
@@ -297,7 +314,7 @@ void NES_CVBS::EncodeField(int dot_phase, int line_start, int line_end, bool odd
                 phase = (phase + 1) % 12;
             }
         }
-        if (phase_alternate) phase = (phase + 9) % 12;
+        if (phase_alternate) phase = (phase + 12 - 3) % 12;
     }
 }
 

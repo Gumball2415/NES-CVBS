@@ -27,10 +27,10 @@ SOFTWARE.
 
 int main(int argc, char* argv[])
 {
-	NES_CVBS* nes_filter = new NES_CVBS(0, 0, true, false, 4);
+	NES_CVBS* nes_filter = new NES_CVBS(0, 0, true, false, 8);
 
 	uint16_t* ppu_frame_input = new uint16_t[256 * 240]{};
-	for (int pixel = 0; pixel < (256 * 240); pixel++) ppu_frame_input[pixel] = 0x08;
+	for (int pixel = 0; pixel < (256 * 240); pixel++) ppu_frame_input[pixel] = 0x03;
 	uint32_t* rgb_frame_output = new uint32_t[256 * 240]{};
 
 	nes_filter->FilterFrame(ppu_frame_input, rgb_frame_output, 0, true);
