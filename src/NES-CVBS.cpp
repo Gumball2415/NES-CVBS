@@ -194,31 +194,31 @@ void NES_CVBS::EmplaceField()
         PPURasterTimings.back_porch_first +
         PPURasterTimings.colorburst +
         PPURasterTimings.back_porch_second;
-
+    uint16_t pixel_index = 0, pixel_threshold = 0, scanline_threshold = 0;
     if (PPUFullFrameInput && PPUType == 0) {
         for (uint16_t scanline = 0; scanline < visible_scanline; scanline++) {
-            uint16_t pixel = pixel_offset;
-            uint16_t pixel_threshold = pixel;
-            uint16_t scanline_threshold = 0;
+            pixel_index = pixel_offset;
+            pixel_threshold = pixel_index;
+            scanline_threshold = 0;
             if (ScanlineIsIn(PPURasterTimings.active_scanlines, scanline, scanline_threshold)) {
-                WritePixelsIn(PPURasterTimings.gray_pulse, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level, &PPURawFrameBuffer);
-                WritePixelsIn(PPURasterTimings.border_left, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level, &PPURawFrameBuffer);
-                WritePixelsIn(PPURasterTimings.active_pixels, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level, &PPURawFrameBuffer);
-                WritePixelsIn(PPURasterTimings.border_right, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level, &PPURawFrameBuffer);
+                WritePixelsIn(PPURasterTimings.gray_pulse, RawFieldBuffer, pixel_index, scanline, pixel_threshold, blank_level, &PPURawFrameBuffer);
+                WritePixelsIn(PPURasterTimings.border_left, RawFieldBuffer, pixel_index, scanline, pixel_threshold, blank_level, &PPURawFrameBuffer);
+                WritePixelsIn(PPURasterTimings.active_pixels, RawFieldBuffer, pixel_index, scanline, pixel_threshold, blank_level, &PPURawFrameBuffer);
+                WritePixelsIn(PPURasterTimings.border_right, RawFieldBuffer, pixel_index, scanline, pixel_threshold, blank_level, &PPURawFrameBuffer);
             }
             else {
-                WritePixelsIn(PPURasterTimings.gray_pulse, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level, &PPURawFrameBuffer);
-                WritePixelsIn(PPURasterTimings.border_bottom, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level, &PPURawFrameBuffer);
+                WritePixelsIn(PPURasterTimings.gray_pulse, RawFieldBuffer, pixel_index, scanline, pixel_threshold, blank_level, &PPURawFrameBuffer);
+                WritePixelsIn(PPURasterTimings.border_bottom, RawFieldBuffer, pixel_index, scanline, pixel_threshold, blank_level, &PPURawFrameBuffer);
             }
 
         }
     }
     else {
         for (uint16_t scanline = 0; scanline < PPURasterTimings.active_scanlines; scanline++) {
-            uint16_t pixel = pixel_offset + PPURasterTimings.gray_pulse + PPURasterTimings.border_left;
-            uint16_t pixel_threshold = pixel;
-            uint16_t scanline_threshold = 0;
-            WritePixelsIn(PPURasterTimings.active_pixels, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level, &PPURawFrameBuffer);
+            pixel_index = pixel_offset + PPURasterTimings.gray_pulse + PPURasterTimings.border_left;
+            pixel_threshold = pixel_index;
+            scanline_threshold = 0;
+            WritePixelsIn(PPURasterTimings.active_pixels, RawFieldBuffer, pixel_index, scanline, pixel_threshold, blank_level, &PPURawFrameBuffer);
         }
     }
 }
@@ -262,7 +262,7 @@ void NES_CVBS::EncodeField(int dot_phase, int line_start, int line_end, bool ski
     };
 
     // skip a dot on odd rendered frames.
-    // we can't really alter the size of the signal buffer, so instead we'll shift the phase by -1 pixel
+    // we can't really alter the size of the signal buffer, so instead we'll shift the phase by -1 pixel_index
     // we'll skip over this pixel in the decoder
     bool dot_jump = skip_dot && (PPUType == 0);
 
