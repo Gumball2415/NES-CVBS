@@ -100,8 +100,10 @@ void NES_CVBS::ApplySettings(double brightness_delta, double contrast_delta, dou
 
     InitializeDecoder(HueDelta, SaturationDelta);
 
-    delete[] RawFieldBuffer;
-    delete[] SignalFieldBuffer;
+    if (RawFieldBuffer != nullptr)
+        delete[] RawFieldBuffer;
+    if (SignalFieldBuffer != nullptr)
+        delete[] SignalFieldBuffer;
     RawFieldBuffer = new PPUDotType[FieldBufferWidth * FieldBufferHeight];
     SignalFieldBuffer = new uint16_t[SignalBufferWidth * SignalBufferHeight];
     InitializeField();
