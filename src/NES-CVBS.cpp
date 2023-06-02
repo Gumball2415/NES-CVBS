@@ -33,10 +33,10 @@ void NES_CVBS::FilterFrame(uint16_t* ppu_buffer, uint32_t* rgb_buffer, int dot_p
 
     if (PPUThreadCount > 1) {
         int dot_phase_buffer = dot_phase;
-        unsigned int scanline_index = 0;
+        int scanline_index = 0;
 
         // split the work into n number of threads
-        unsigned int field_chunk_size = (FieldBufferHeight / PPUThreadCount),
+        int field_chunk_size = (FieldBufferHeight / PPUThreadCount),
             field_chunk_size_remainder = 0;
         // if the thread count doesn't divide the field evenly, relegate the nth thread to the remaining area
         if (FieldBufferHeight % PPUThreadCount) {
@@ -93,9 +93,8 @@ void NES_CVBS::ApplySettings(double brightness_delta, double contrast_delta, dou
     }
 
     FieldBufferWidth = PPUSyncEnable ? PPURasterTimings.field_width : PPURasterTimings.visible_width;
-    FieldBufferHeight = PPUSyncEnable ? PPURasterTimings.field_height : PPURasterTimings.visible_height;
+    FieldBufferHeight = SignalBufferHeight = PPUSyncEnable ? PPURasterTimings.field_height : PPURasterTimings.visible_height;
     SignalBufferWidth = FieldBufferWidth * PPURasterTimings.samples_per_pixel;
-    SignalBufferHeight = FieldBufferHeight;
 
     InitializeSignalLevelLUT(BrightnessDelta, ContrastDelta, ppu_voltages);
 
@@ -132,7 +131,6 @@ void NES_CVBS::InitializeSignalLevelLUT(double brightness_delta, double contrast
     auto voltage_normalize = [&](double voltage, double black_point, double white_point) {
         // black point and white point potentially could be used for normalizing
         return uint16_t((((voltage - black_point) / (white_point - black_point) * (contrast_delta + 1)) + brightness_delta) * 0xFFFF);
-        // for now, convert to integer mV
         //return uint16_t(voltage * 1000);
     };
 
@@ -282,12 +280,12 @@ void NES_CVBS::EncodeField(int dot_phase, int line_start, int line_end, bool ski
             (emphasis & 0b010) && in_phase(phase, 0x4) ||
             (emphasis & 0b100) && in_phase(phase, 0x8);
     };
+
     // PAL phase swing amount
     static int phase_swing_delta = 3;
 
     // amount of color generator clocks within a given pixel
     static int phase_pixel_delta = PPURasterTimings.samples_per_pixel;
-    static int phase_pixel_delta_negative = 12 - PPURasterTimings.samples_per_pixel;
 
     // skip a dot on odd rendered frames.
     // we can't really alter the size of the signal buffer, so instead we'll shift the phase by -1 pixel_index
@@ -298,7 +296,15 @@ void NES_CVBS::EncodeField(int dot_phase, int line_start, int line_end, bool ski
     bool wave_toggle = false, emphasis_toggle = false;
 
     // color generator phase
-    uint16_t phase = (((dot_phase + line_start) % 3) * 4) % 12;
+    int8_t phase;
+    phase = ((((dot_phase * 2) + line_start) % 6) * 2) % 12;
+    if (PPUType >= 1)
+        // on PAL, dot phase is mod 6 instead of 3
+        // ideally the dot phase is constant, but we want some flexibility with the dot pattern
+        // in case emu authors think PAL composite is too ugly
+        phase = ((((dot_phase * 2) + line_start) % 6) * 2) % 12;
+    else
+        phase = (((dot_phase + line_start) % 3) * 4) % 12;
 
     // if we haven't skipped a dot yet, shift phase to "previous" dot phase, before dot skipped
     if (dot_jump && line_start == 0)
@@ -306,12 +312,12 @@ void NES_CVBS::EncodeField(int dot_phase, int line_start, int line_end, bool ski
 
     for (int scanline = line_start; scanline < line_end; scanline++) {
         // on PAL, alternate phase on every other scanline
-        bool phase_alternate = ((scanline) & 0b1) && (PPUType >= 1);
+        bool phase_alternate = (scanline & 1) && (PPUType >= 1);
         if (phase_alternate) phase = (phase + phase_swing_delta) % 12;
 
         for (int pixel_index = 0; pixel_index < FieldBufferWidth; pixel_index++) {
             if (pixel_index == 63 && scanline == 0 && dot_jump)
-                phase = (phase + phase_pixel_delta_negative) % 12;
+                phase = (phase - phase_pixel_delta) % 12;
             PPUDotType pixel = RawFieldBuffer[size_t((scanline * FieldBufferWidth) + pixel_index)];
             uint8_t color = pixel & 0x3F;
             uint8_t hue = pixel & 0x0F;
@@ -341,7 +347,7 @@ void NES_CVBS::EncodeField(int dot_phase, int line_start, int line_end, bool ski
                 phase = (phase + 1) % 12;
             }
         }
-        if (phase_alternate) phase = (phase + (12 - phase_swing_delta)) % 12;
+        if (phase_alternate) phase = (phase - phase_swing_delta) % 12;
     }
 }
 
