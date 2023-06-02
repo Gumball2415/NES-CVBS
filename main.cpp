@@ -30,7 +30,7 @@ int main(int argc, char* argv[])
 	NES_CVBS* nes_filter = new NES_CVBS(0, 0, true, false, 8);
 
 	uint16_t* ppu_frame_input = new uint16_t[256 * 240]{};
-	for (int pixel = 0; pixel < (256 * 240); pixel++) ppu_frame_input[pixel] = 0x03;
+	for (int pixel = 0; pixel < (256 * 240); pixel++) ppu_frame_input[pixel] = 0x08;
 	uint32_t* rgb_frame_output = new uint32_t[256 * 240]{};
 
 	nes_filter->FilterFrame(ppu_frame_input, rgb_frame_output, 0, true);
@@ -42,7 +42,16 @@ int main(int argc, char* argv[])
 		buffer_stretch.push_back(uint8_t(nes_filter->SignalFieldBuffer[i] & 0x00FF));
 	}
 
-	export_png("test.png", buffer_stretch, uint32_t(nes_filter->SignalBufferWidth), nes_filter->SignalBufferHeight);
+	export_png("test_odd.png", buffer_stretch, uint32_t(nes_filter->SignalBufferWidth), nes_filter->SignalBufferHeight);
+
+	nes_filter->FilterFrame(ppu_frame_input, rgb_frame_output, 1, false);
+
+	for (int i = 0; i < (nes_filter->SignalBufferWidth * nes_filter->SignalBufferHeight); i++) {
+		buffer_stretch.at(i * 2) = (uint8_t((nes_filter->SignalFieldBuffer[i] >> 8) & 0x00FF));
+		buffer_stretch.at(i * 2 + 1) = (uint8_t(nes_filter->SignalFieldBuffer[i] & 0x00FF));
+	}
+
+	export_png("test_even.png", buffer_stretch, uint32_t(nes_filter->SignalBufferWidth), nes_filter->SignalBufferHeight);
 
 	// done, claygo
 	delete nes_filter;

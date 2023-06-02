@@ -76,13 +76,13 @@ private:
     int PPUThreadCount = 0;         // enables multithreading when thread count > 1.
 
     // image settings
-    double brightness_delta = 0.0;
-    double contrast_delta = 0.0;
-    double hue_delta = 0.0;
-    double saturation_delta = 0.0;
+    double BrightnessDelta = 0.0;
+    double ContrastDelta = 0.0;
+    double HueDelta = 0.0;
+    double SaturationDelta = 0.0;
 
     // voltage LUT for any given color, in mV
-    // high/low, no emphasis/emphasis, $xy color
+    // low/high, no emphasis/emphasis, $xy color
     // 0x40 == sync, 0x41 = colorburst
     uint16_t SignalLevelLUT[2][2][66] = {};
     
@@ -91,6 +91,11 @@ private:
 
     // input PPU frame buffer, can be 256x240 or 283x242
     uint16_t* PPURawFrameBuffer = nullptr;
+
+
+    void InitializeSignalLevelLUT(double brightness_delta, double contrast_delta, CompositeOutputLevel ppu_voltages);
+
+    void InitializeDecoder(double hue_delta, double saturation_delta);
 
     // Initializes the raw field buffer
     void InitializeField();

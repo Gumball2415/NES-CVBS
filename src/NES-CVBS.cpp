@@ -71,15 +71,10 @@ void NES_CVBS::FilterFrame(uint16_t* ppu_buffer, uint32_t* rgb_buffer, int dot_p
 
 void NES_CVBS::ApplySettings(double brightness_delta, double contrast_delta, double hue_delta, double saturation_delta)
 {
-}
-
-NES_CVBS::NES_CVBS(int ppu_type, int ppu_2c04_rev, bool ppu_sync_enable, bool ppu_full_frame_input, int ppu_thread_count)
-{
-    PPUType = ppu_type;
-    PPU2C04Rev = ppu_2c04_rev;
-    PPUSyncEnable = ppu_sync_enable;
-    PPUFullFrameInput = ppu_full_frame_input;
-    PPUThreadCount = ppu_thread_count;
+    BrightnessDelta = brightness_delta;
+    ContrastDelta = contrast_delta;
+    HueDelta = hue_delta;
+    SaturationDelta = saturation_delta;
 
     CompositeOutputLevel ppu_voltages;
     switch (PPUType) {
@@ -97,6 +92,21 @@ NES_CVBS::NES_CVBS(int ppu_type, int ppu_2c04_rev, bool ppu_sync_enable, bool pp
         break;
     }
 
+    InitializeSignalLevelLUT(BrightnessDelta, ContrastDelta, ppu_voltages);
+
+    InitializeDecoder(HueDelta, SaturationDelta);
+}
+
+NES_CVBS::NES_CVBS(int ppu_type, int ppu_2c04_rev, bool ppu_sync_enable, bool ppu_full_frame_input, int ppu_thread_count)
+{
+    PPUType = ppu_type;
+    PPU2C04Rev = ppu_2c04_rev;
+    PPUSyncEnable = ppu_sync_enable;
+    PPUFullFrameInput = ppu_full_frame_input;
+    PPUThreadCount = ppu_thread_count;
+
+    ApplySettings(BrightnessDelta, ContrastDelta, HueDelta, SaturationDelta);
+
     FieldBufferWidth = PPUSyncEnable ? PPURasterTimings.field_width : PPURasterTimings.visible_width;
     FieldBufferHeight = PPUSyncEnable ? PPURasterTimings.field_height : PPURasterTimings.visible_height;
     SignalBufferWidth = FieldBufferWidth * PPURasterTimings.samples_per_pixel;
@@ -104,38 +114,7 @@ NES_CVBS::NES_CVBS(int ppu_type, int ppu_2c04_rev, bool ppu_sync_enable, bool pp
 
     RawFieldBuffer = new PPUDotType[FieldBufferWidth * FieldBufferHeight];
     SignalFieldBuffer = new uint16_t[SignalBufferWidth * SignalBufferHeight];
-
     InitializeField();
-
-    auto voltage_normalize = [&](double voltage, double black_point, double white_point) {
-        // black point and white point potentially could be used for normalizing
-        return uint16_t((voltage - black_point) / (white_point - black_point) * 0xFFFF);
-        // for now, convert to integer mV
-        //return uint16_t(voltage * 1000);
-    };
-
-    for (int emph = 0; emph < 2; emph++) {
-        double blank = ppu_voltages.sync[1];
-        double white = ppu_voltages.signal[3][0][0];
-        for (int color = 0; color < 0x40; color++) {
-            int hue = color & 0x0F;
-            int luma = (color >> 4) & 0x03;
-            double high = ppu_voltages.signal[luma][0][emph];
-            double low = ppu_voltages.signal[luma][1][emph];
-
-            if (hue == 0x00) low = high; 
-            else if (hue == 0x0D) high = low;
-            else if (hue >= 0x0E) high = low = ppu_voltages.signal[1][1][0];
-
-            SignalLevelLUT[0][emph][color] = voltage_normalize(high, blank, white);
-            SignalLevelLUT[1][emph][color] = voltage_normalize(low, blank, white);
-        }
-
-        SignalLevelLUT[0][emph][0x40] = voltage_normalize(ppu_voltages.sync[0], blank, white);
-        SignalLevelLUT[1][emph][0x40] = voltage_normalize(ppu_voltages.sync[1], blank, white);
-        SignalLevelLUT[0][emph][0x41] = voltage_normalize(ppu_voltages.colorburst[0], blank, white);
-        SignalLevelLUT[1][emph][0x41] = voltage_normalize(ppu_voltages.colorburst[1], blank, white);
-    }
 
     PPU2C04LUT = PaletteLUT_2C04[PPU2C04Rev];
 }
@@ -144,6 +123,43 @@ NES_CVBS::~NES_CVBS()
 {
     delete[] RawFieldBuffer;
     delete[] SignalFieldBuffer;
+}
+
+void NES_CVBS::InitializeSignalLevelLUT(double brightness_delta, double contrast_delta, CompositeOutputLevel ppu_voltages)
+{
+    auto voltage_normalize = [&](double voltage, double black_point, double white_point) {
+        // black point and white point potentially could be used for normalizing
+        return uint16_t((((voltage - black_point) / (white_point - black_point) * (contrast_delta + 1)) + brightness_delta) * 0xFFFF);
+        // for now, convert to integer mV
+        //return uint16_t(voltage * 1000);
+    };
+
+    for (int emph = 0; emph < 2; emph++) {
+        double blank = ppu_voltages.sync[0];
+        double white = ppu_voltages.signal[3][1][0];
+        for (int color = 0; color < 0x40; color++) {
+            int hue = color & 0x0F;
+            int luma = (color >> 4) & 0x03;
+            double low = ppu_voltages.signal[luma][0][emph];
+            double high = ppu_voltages.signal[luma][1][emph];
+
+            if (hue == 0x00) low = high;
+            else if (hue == 0x0D) high = low;
+            else if (hue >= 0x0E) high = low = ppu_voltages.signal[1][0][0];
+
+            SignalLevelLUT[0][emph][color] = voltage_normalize(low, blank, white);
+            SignalLevelLUT[1][emph][color] = voltage_normalize(high, blank, white);
+        }
+
+        SignalLevelLUT[0][emph][0x40] = voltage_normalize(ppu_voltages.sync[0], blank, white);
+        SignalLevelLUT[1][emph][0x40] = voltage_normalize(ppu_voltages.sync[1], blank, white);
+        SignalLevelLUT[0][emph][0x41] = voltage_normalize(ppu_voltages.colorburst[0], blank, white);
+        SignalLevelLUT[1][emph][0x41] = voltage_normalize(ppu_voltages.colorburst[1], blank, white);
+    }
+}
+
+void NES_CVBS::InitializeDecoder(double hue_delta, double saturation_delta)
+{
 }
 
 void NES_CVBS::InitializeField()
@@ -264,6 +280,12 @@ void NES_CVBS::EncodeField(int dot_phase, int line_start, int line_end, bool ski
             (emphasis & 0b010) && in_phase(phase, 0x4) ||
             (emphasis & 0b100) && in_phase(phase, 0x8);
     };
+    // PAL phase swing amount
+    static int phase_swing_delta = 3;
+
+    // amount of color generator clocks within a given pixel
+    static int phase_pixel_delta = PPURasterTimings.samples_per_pixel;
+    static int phase_pixel_delta_negative = 12 - PPURasterTimings.samples_per_pixel;
 
     // skip a dot on odd rendered frames.
     // we can't really alter the size of the signal buffer, so instead we'll shift the phase by -1 pixel_index
@@ -274,21 +296,20 @@ void NES_CVBS::EncodeField(int dot_phase, int line_start, int line_end, bool ski
     bool wave_toggle = false, emphasis_toggle = false;
 
     // color generator phase
-    uint16_t phase = ((dot_phase + line_start) % 3) * 4;
+    uint16_t phase = (((dot_phase + line_start) % 3) * 4) % 12;
 
-    // if we skipped a dot already, shift phase accordingly
-    if (dot_jump && line_start > 0)
-        phase = (phase + 12 - PPURasterTimings.samples_per_pixel);
+    // if we haven't skipped a dot yet, shift phase to "previous" dot phase, before dot skipped
+    if (dot_jump && line_start == 0)
+        phase = (phase + phase_pixel_delta) % 12;
 
     for (int scanline = line_start; scanline < line_end; scanline++) {
         // on PAL, alternate phase on every other scanline
         bool phase_alternate = ((scanline) & 0b1) && (PPUType >= 1);
-        if (phase_alternate) phase = (phase + 3) % 12;
+        if (phase_alternate) phase = (phase + phase_swing_delta) % 12;
 
         for (int pixel_index = 0; pixel_index < FieldBufferWidth; pixel_index++) {
-            // skip a dot just before cycle 0, if enabled
             if (pixel_index == 63 && scanline == 0 && dot_jump)
-                phase = (phase + 12 - PPURasterTimings.samples_per_pixel) % 12;
+                phase = (phase + phase_pixel_delta_negative) % 12;
             PPUDotType pixel = RawFieldBuffer[size_t((scanline * FieldBufferWidth) + pixel_index)];
             uint8_t color = pixel & 0x3F;
             uint8_t hue = pixel & 0x0F;
@@ -304,21 +325,21 @@ void NES_CVBS::EncodeField(int dot_phase, int line_start, int line_end, bool ski
             }
 
             int signal_index = 0;
-            while (signal_index < PPURasterTimings.samples_per_pixel) {
+            while (signal_index < phase_pixel_delta) {
                 wave_toggle = in_phase(phase, hue);
                 emphasis_toggle = in_emphasis_phase(phase, emphasis);
 
-                if (pixel == sync_level) wave_toggle = 1;
-                else if (pixel == blank_level) wave_toggle = 0;
+                if (pixel == sync_level) wave_toggle = 0;
+                else if (pixel == blank_level) wave_toggle = 1;
 
-                SignalFieldBuffer[size_t((scanline * FieldBufferWidth * PPURasterTimings.samples_per_pixel) +
-                    (pixel_index * PPURasterTimings.samples_per_pixel) +
+                SignalFieldBuffer[size_t((scanline * FieldBufferWidth * phase_pixel_delta) +
+                    (pixel_index * phase_pixel_delta) +
                     signal_index++)] = SignalLevelLUT[wave_toggle][emphasis_toggle][color];
 
                 phase = (phase + 1) % 12;
             }
         }
-        if (phase_alternate) phase = (phase + 12 - 3) % 12;
+        if (phase_alternate) phase = (phase + (12 - phase_swing_delta)) % 12;
     }
 }
 
