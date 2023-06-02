@@ -99,9 +99,11 @@ NES_CVBS::NES_CVBS(int ppu_type, int ppu_2c04_rev, bool ppu_sync_enable, bool pp
 
     FieldBufferWidth = PPUSyncEnable ? PPURasterTimings.field_width : PPURasterTimings.visible_width;
     FieldBufferHeight = PPUSyncEnable ? PPURasterTimings.field_height : PPURasterTimings.visible_height;
+    SignalBufferWidth = FieldBufferWidth * PPURasterTimings.samples_per_pixel;
+    SignalBufferHeight = FieldBufferHeight;
 
-    RawFieldBuffer.resize(size_t(FieldBufferWidth * FieldBufferHeight + 1));
-    SignalFieldBuffer.resize(size_t((FieldBufferWidth * PPURasterTimings.samples_per_pixel) * FieldBufferHeight));
+    RawFieldBuffer = new PPUDotType[FieldBufferWidth * FieldBufferHeight];
+    SignalFieldBuffer = new uint16_t[SignalBufferWidth * SignalBufferHeight];
 
     InitializeField();
 
@@ -140,6 +142,8 @@ NES_CVBS::NES_CVBS(int ppu_type, int ppu_2c04_rev, bool ppu_sync_enable, bool pp
 
 NES_CVBS::~NES_CVBS()
 {
+    delete[] RawFieldBuffer;
+    delete[] SignalFieldBuffer;
 }
 
 void NES_CVBS::InitializeField()
@@ -223,7 +227,7 @@ void NES_CVBS::EmplaceField()
     }
 }
 
-void NES_CVBS::WritePixelsIn(uint16_t length, std::vector<PPUDotType>& raw_field_buffer, uint16_t& pixel_index, uint16_t& scanline_index, uint16_t& pixel_threshold, PPUDotType pixel, uint16_t** ppu_buffer)
+void NES_CVBS::WritePixelsIn(uint16_t length, PPUDotType* raw_field_buffer, uint16_t& pixel_index, uint16_t& scanline_index, uint16_t& pixel_threshold, PPUDotType pixel, uint16_t** ppu_buffer)
 {
     if (length <= 0) return;
     pixel_threshold += length;

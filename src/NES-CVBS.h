@@ -99,7 +99,7 @@ private:
     void EmplaceField();
 
     // helper functions for the two functions above
-    void WritePixelsIn(uint16_t length, std::vector<PPUDotType>& raw_field_buffer, uint16_t& pixel_index, uint16_t& scanline_index, uint16_t& pixel_threshold, PPUDotType pixel, uint16_t** ppu_buffer = nullptr);
+    void WritePixelsIn(uint16_t length, PPUDotType* raw_field_buffer, uint16_t& pixel_index, uint16_t& scanline_index, uint16_t& pixel_threshold, PPUDotType pixel, uint16_t** ppu_buffer = nullptr);
     bool ScanlineIsIn(uint16_t length, uint16_t& scanline, uint16_t& scanline_threshold);
 
     void EncodeField(int dot_phase, int line_start, int line_end, bool skip_dot);
@@ -108,11 +108,13 @@ private:
 public:
     uint16_t FieldBufferWidth = 0;
     uint16_t FieldBufferHeight = 0;
+    uint16_t SignalBufferWidth = 0;
+    uint16_t SignalBufferHeight = 0;
     // entire raw PPU pixel field is stored here, for encoding later
-    std::vector<PPUDotType> RawFieldBuffer = {};
+    PPUDotType* RawFieldBuffer = nullptr;
 
     // a single composite field is stored here for color decoding
-    std::vector<uint16_t> SignalFieldBuffer = {};
+    uint16_t* SignalFieldBuffer = nullptr;
     void FilterFrame(uint16_t* ppu_buffer, uint32_t* rgb_buffer, int dot_phase, bool skip_dot);
 
     void ApplySettings(double brightness_delta, double contrast_delta, double hue_delta, double saturation_delta);

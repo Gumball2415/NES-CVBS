@@ -37,12 +37,12 @@ int main(int argc, char* argv[])
 
 	std::vector<uint8_t> buffer_stretch;
 
-	for (int i = 0; i < nes_filter->SignalFieldBuffer.size(); i++) {
-		buffer_stretch.push_back(uint8_t((nes_filter->SignalFieldBuffer.at(i) >> 8) & 0x00FF));
-		buffer_stretch.push_back(uint8_t(nes_filter->SignalFieldBuffer.at(i) & 0x00FF));
+	for (int i = 0; i < (nes_filter->SignalBufferWidth * nes_filter->SignalBufferHeight); i++) {
+		buffer_stretch.push_back(uint8_t((nes_filter->SignalFieldBuffer[i] >> 8) & 0x00FF));
+		buffer_stretch.push_back(uint8_t(nes_filter->SignalFieldBuffer[i] & 0x00FF));
 	}
 
-	export_png("test.png", buffer_stretch, uint32_t(nes_filter->SignalFieldBuffer.size() / nes_filter->FieldBufferHeight), nes_filter->FieldBufferHeight);
+	export_png("test.png", buffer_stretch, uint32_t(nes_filter->SignalBufferWidth), nes_filter->SignalBufferHeight);
 
 	// done, claygo
 	delete nes_filter;
