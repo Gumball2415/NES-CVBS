@@ -117,11 +117,11 @@ public:
     uint16_t SignalBufferHeight = 0;
     // entire raw PPU pixel field is stored here, for encoding later
     PPUDotType* RawFieldBuffer = nullptr;
-
     // a single composite field is stored here for color decoding
     uint16_t* SignalFieldBuffer = nullptr;
-    void FilterFrame(uint16_t* ppu_buffer, uint32_t* rgb_buffer, int dot_phase, bool skip_dot);
 
+    void FilterFrame(uint16_t* ppu_buffer, uint32_t* rgb_buffer, int dot_phase, bool skip_dot);
+    // initializes the signal LUT, decoder and encoder. call before applying FilterFrame()
     void ApplySettings(double brightness_delta, double contrast_delta, double hue_delta, double saturation_delta);
 
     NES_CVBS(int ppu_type, int ppu_2c04_rev, bool ppu_sync_enable, bool ppu_full_frame_input, int ppu_thread_count);

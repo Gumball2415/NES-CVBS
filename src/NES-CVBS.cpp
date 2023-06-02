@@ -92,9 +92,22 @@ void NES_CVBS::ApplySettings(double brightness_delta, double contrast_delta, dou
         break;
     }
 
+    FieldBufferWidth = PPUSyncEnable ? PPURasterTimings.field_width : PPURasterTimings.visible_width;
+    FieldBufferHeight = PPUSyncEnable ? PPURasterTimings.field_height : PPURasterTimings.visible_height;
+    SignalBufferWidth = FieldBufferWidth * PPURasterTimings.samples_per_pixel;
+    SignalBufferHeight = FieldBufferHeight;
+
     InitializeSignalLevelLUT(BrightnessDelta, ContrastDelta, ppu_voltages);
 
     InitializeDecoder(HueDelta, SaturationDelta);
+
+    delete[] RawFieldBuffer;
+    delete[] SignalFieldBuffer;
+    RawFieldBuffer = new PPUDotType[FieldBufferWidth * FieldBufferHeight];
+    SignalFieldBuffer = new uint16_t[SignalBufferWidth * SignalBufferHeight];
+    InitializeField();
+
+    PPU2C04LUT = PaletteLUT_2C04[PPU2C04Rev];
 }
 
 NES_CVBS::NES_CVBS(int ppu_type, int ppu_2c04_rev, bool ppu_sync_enable, bool ppu_full_frame_input, int ppu_thread_count)
@@ -106,17 +119,6 @@ NES_CVBS::NES_CVBS(int ppu_type, int ppu_2c04_rev, bool ppu_sync_enable, bool pp
     PPUThreadCount = ppu_thread_count;
 
     ApplySettings(BrightnessDelta, ContrastDelta, HueDelta, SaturationDelta);
-
-    FieldBufferWidth = PPUSyncEnable ? PPURasterTimings.field_width : PPURasterTimings.visible_width;
-    FieldBufferHeight = PPUSyncEnable ? PPURasterTimings.field_height : PPURasterTimings.visible_height;
-    SignalBufferWidth = FieldBufferWidth * PPURasterTimings.samples_per_pixel;
-    SignalBufferHeight = FieldBufferHeight;
-
-    RawFieldBuffer = new PPUDotType[FieldBufferWidth * FieldBufferHeight];
-    SignalFieldBuffer = new uint16_t[SignalBufferWidth * SignalBufferHeight];
-    InitializeField();
-
-    PPU2C04LUT = PaletteLUT_2C04[PPU2C04Rev];
 }
 
 NES_CVBS::~NES_CVBS()
