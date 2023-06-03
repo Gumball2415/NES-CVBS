@@ -29,7 +29,7 @@ struct CompositeOutputLevel{
 };
 
 // https://forums.nesdev.org/viewtopic.php?p=159266#p159266
-const CompositeOutputLevel NES_2C02 = CompositeOutputLevel(
+const CompositeOutputLevel NES_2C02 = {
     { 0.048, 0.312 },
     { 0.148, 0.524 },
     {
@@ -50,7 +50,7 @@ const CompositeOutputLevel NES_2C02 = CompositeOutputLevel(
             { 1.100, 0.896 }
         }
     }
-);
+};
 
 // TODO: find voltage measurements for these PPUs
 const CompositeOutputLevel NES_2C07 = NES_2C02;

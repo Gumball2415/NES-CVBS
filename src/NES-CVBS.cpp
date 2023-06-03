@@ -104,8 +104,10 @@ void NES_CVBS::ApplySettings(double brightness_delta, double contrast_delta, dou
         delete[] RawFieldBuffer;
     if (SignalFieldBuffer != nullptr)
         delete[] SignalFieldBuffer;
+
     RawFieldBuffer = new PPUDotType[FieldBufferWidth * FieldBufferHeight];
     SignalFieldBuffer = new uint16_t[SignalBufferWidth * SignalBufferHeight];
+    
     InitializeField();
 
     PPU2C04LUT = PaletteLUT_2C04[PPU2C04Rev];
@@ -180,10 +182,15 @@ void NES_CVBS::InitializeField()
         }
 
         if (ScanlineIsIn(PPURasterTimings.active_scanlines, scanline, scanline_threshold)) {
-            WritePixelsIn(PPURasterTimings.gray_pulse, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level);
-            WritePixelsIn(PPURasterTimings.border_left, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level);
-            WritePixelsIn(PPURasterTimings.active_pixels, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level);
-            WritePixelsIn(PPURasterTimings.border_right, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level);
+            if (PPUType >= 1 && !PPUSyncEnable)
+                // on PAL, syncless has no extra borders, so try not to write out of bounds
+                WritePixelsIn(PPURasterTimings.active_pixels, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level);
+            else {
+                WritePixelsIn(PPURasterTimings.gray_pulse, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level);
+                WritePixelsIn(PPURasterTimings.border_left, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level);
+                WritePixelsIn(PPURasterTimings.active_pixels, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level);
+                WritePixelsIn(PPURasterTimings.border_right, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level);
+            }
         }
         else if (ScanlineIsIn(PPURasterTimings.postrender_scanlines, scanline, scanline_threshold)) {
             WritePixelsIn(PPURasterTimings.gray_pulse, RawFieldBuffer, pixel, scanline, pixel_threshold, blank_level);
@@ -237,7 +244,9 @@ void NES_CVBS::EmplaceField()
     }
     else {
         for (uint16_t scanline = 0; scanline < PPURasterTimings.active_scanlines; scanline++) {
-            pixel_index = pixel_offset + PPURasterTimings.gray_pulse + PPURasterTimings.border_left;
+            pixel_index = pixel_offset;
+            // on PAL, syncless has no extra borders, so try not to write out of bounds
+            if (PPUType == 0 && !PPUSyncEnable) pixel_index += PPURasterTimings.gray_pulse + PPURasterTimings.border_left;
             pixel_threshold = pixel_index;
             scanline_threshold = 0;
             WritePixelsIn(PPURasterTimings.active_pixels, RawFieldBuffer, pixel_index, scanline, pixel_threshold, blank_level, &PPURawFrameBuffer);
@@ -294,12 +303,17 @@ void NES_CVBS::EncodeField(int dot_phase, int line_start, int line_end, bool ski
     // we'll skip over this pixel in the decoder
     bool dot_jump = skip_dot && (PPUType == 0);
 
+    static int syncless_offset = PPURasterTimings.horizontal_sync +
+        PPURasterTimings.back_porch_first +
+        PPURasterTimings.colorburst +
+        PPURasterTimings.back_porch_second;
+
     // determine polarity of waveform
     bool wave_toggle = false, emphasis_toggle = false;
 
     // color generator phase
     int8_t phase;
-    phase = ((((dot_phase * 2) + line_start) % 6) * 2) % 12;
+
     if (PPUType >= 1)
         // on PAL, dot phase is mod 6 instead of 3
         // ideally the dot phase is constant, but we want some flexibility with the dot pattern
@@ -308,18 +322,27 @@ void NES_CVBS::EncodeField(int dot_phase, int line_start, int line_end, bool ski
     else
         phase = (((dot_phase + line_start) % 3) * 4) % 12;
 
+
     // if we haven't skipped a dot yet, shift phase to "previous" dot phase, before dot skipped
-    if (dot_jump && line_start == 0)
+    if (dot_jump && line_start == 0 && PPUSyncEnable)
         phase = (phase + phase_pixel_delta) % 12;
 
     for (int scanline = line_start; scanline < line_end; scanline++) {
+        if (!PPUSyncEnable) phase = (phase + syncless_offset) % 12;
         // on PAL, alternate phase on every other scanline
         bool phase_alternate = (scanline & 1) && (PPUType >= 1);
         if (phase_alternate) phase = (phase + phase_swing_delta) % 12;
 
         for (int pixel_index = 0; pixel_index < FieldBufferWidth; pixel_index++) {
-            if (pixel_index == 63 && scanline == 0 && dot_jump)
+            if (dot_jump && pixel_index == 63 && scanline == 0 && PPUSyncEnable)
                 phase = (phase - phase_pixel_delta) % 12;
+            // syncless mode disables colorburst, so we offset the phase at this point
+            // which will be aligned when the decoder skips a dot
+            else if (dot_jump && pixel_index == 14 && scanline == 0 && !PPUSyncEnable)
+                phase = (phase - phase_pixel_delta) % 12;
+            else if (dot_jump && pixel_index == 0 && scanline == 1 && !PPUSyncEnable)
+                phase = (phase + phase_pixel_delta) % 12;
+
             PPUDotType pixel = RawFieldBuffer[size_t((scanline * FieldBufferWidth) + pixel_index)];
             uint8_t color = pixel & 0x3F;
             uint8_t hue = pixel & 0x0F;
@@ -339,8 +362,8 @@ void NES_CVBS::EncodeField(int dot_phase, int line_start, int line_end, bool ski
                 wave_toggle = in_phase(phase, hue);
                 emphasis_toggle = in_emphasis_phase(phase, emphasis);
 
-                if (pixel == sync_level) wave_toggle = 0;
-                else if (pixel == blank_level) wave_toggle = 1;
+                //if (pixel == sync_level) wave_toggle = 0;
+                //else if (pixel == blank_level) wave_toggle = 1;
 
                 SignalFieldBuffer[size_t((scanline * FieldBufferWidth * phase_pixel_delta) +
                     (pixel_index * phase_pixel_delta) +
@@ -350,6 +373,7 @@ void NES_CVBS::EncodeField(int dot_phase, int line_start, int line_end, bool ski
             }
         }
         if (phase_alternate) phase = (phase - phase_swing_delta) % 12;
+        if (!PPUSyncEnable) phase = (phase + PPURasterTimings.front_porch - 2) % 12;
     }
 }
 

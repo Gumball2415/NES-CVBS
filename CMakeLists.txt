@@ -1,7 +1,7 @@
 ﻿# CMakeList.txt : CMake project for NES-CVBS, include source and define
 # project specific logic here.
 #
-cmake_minimum_required (VERSION 3.8)
+cmake_minimum_required (VERSION 3.21)
 
 # Enable Hot Reload for MSVC compilers if supported.
 if (POLICY CMP0141)
@@ -17,13 +17,18 @@ project (NES-CVBS-Demo
 
 set(CMAKE_CXX_STANDARD 23)
 
+if (SANITIZE_ADDRESS)
+	add_compile_options(/fsanitize=address)
+	add_link_options(/fsanitize=address)
+endif ()
+
 # lodepng
 add_subdirectory ("src/lodepng")
 list (APPEND EXTRA_LIBS "lodepng")
 list (APPEND EXTRA_INCLUDES "${PROJECT_BINARY_DIR}/lodepng")
 
 # SDL2
-find_package (SDL2 REQUIRED)
+find_package (SDL2 REQUIRED IMPORTED)
 list (APPEND EXTRA_LIBS ${SDL2_LIBRARIES})
 list (APPEND EXTRA_INCLUDES ${SDL2_INCLUDE_DIRS})
 
@@ -35,24 +40,19 @@ target_include_directories (NES-CVBS-Demo
 	
 target_link_libraries (NES-CVBS-Demo PUBLIC ${EXTRA_LIBS})
 
+# TODO: Add tests and install targets if needed.
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET NES-CVBS-Demo PROPERTY CXX_STANDARD 23)
 endif()
 
-if(CMAKE_SIZEOF_VOID_P EQUAL 8) 
-	add_custom_command( TARGET NES-CVBS-Demo POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different 
-		"${SDL2_DIR}/lib/x64/SDL2.dll"
-		"${PROJECT_BINARY_DIR}/SDL2.dll"  )
-	add_custom_command( TARGET NES-CVBS-Demo POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
-		"${SDL2_DIR}/lib/x64/SDL2.dll"
-		"${PROJECT_BINARY_DIR}/SDL2.dll"  )
-elseif()
-	add_custom_command( TARGET NES-CVBS-Demo POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different 
-		"${SDL2_DIR}/lib/x86/SDL2.dll"
-		"${PROJECT_BINARY_DIR}/SDL2.dll"  )
-	add_custom_command( TARGET NES-CVBS-Demo POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
-		"${SDL2_DIR}/lib/x86/SDL2.dll"
-		"${PROJECT_BINARY_DIR}/SDL2.dll"  )
-endif()
-
-# TODO: Add tests and install targets if needed.
+if (${CMAKE_SIZEOF_VOID_P} MATCHES 8)
+add_custom_command(TARGET NES-CVBS-Demo POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${SDL2_DIR}/lib/x64/SDL2.dll"
+        $<TARGET_FILE_DIR:NES-CVBS-Demo>)
+else ()
+add_custom_command(TARGET NES-CVBS-Demo POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${SDL2_DIR}/lib/x86/SDL2.dll"
+        $<TARGET_FILE_DIR:NES-CVBS-Demo>)
+endif ()
